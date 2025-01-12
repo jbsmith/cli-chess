@@ -25,6 +25,7 @@ class PieceColor(Enum):
     BLACK = "black"
 
 class PieceType(Enum):
+    # Using simple ASCII characters
     KING = "K"
     QUEEN = "Q"
     ROOK = "R"
@@ -71,7 +72,9 @@ class Piece:
 
     def __str__(self) -> str:
         symbol = self.piece_type.value
-        return f"{Fore.BLUE if self.color == PieceColor.WHITE else Fore.RED}{symbol}{Style.RESET_ALL}"
+        color = Fore.BLUE if self.color == PieceColor.WHITE else Fore.RED
+        # Compact piece display
+        return f"{color}{symbol}"
 
     def get_valid_moves(self, board: 'Board') -> List[Position]:
         moves = []
@@ -468,20 +471,61 @@ class Board:
         # Clear screen before drawing
         clear_screen()
         
-        print("\n   a b c d e f g h")
-        print("   ---------------")
+        # Board border and coordinate styling
+        border_color = Style.BRIGHT + Fore.YELLOW
+        coord_color = Style.BRIGHT + Fore.CYAN
+        
+        print("\n")  # Extra spacing at top
+        
+        # Column coordinates at top
+        print("        ", end="")
+        for col in range(8):
+            print(f"{coord_color}{chr(97 + col)}   {Style.RESET_ALL}", end="  ")
+        print("\n")
+        
+        # Top border
+        print("     ", end="")
+        print(f"{border_color}+-----+-----+-----+-----+-----+-----+-----+-----+{Style.RESET_ALL}")
+        
+        # Board squares
         for row in range(8):
-            print(f"{8 - row} |", end=" ")
+            # First line of square (empty)
+            print(f"     {border_color}|{Style.RESET_ALL}", end="")
+            for col in range(8):
+                bg_color = Back.WHITE if (row + col) % 2 == 0 else Back.BLACK
+                print(f"{bg_color}     {Style.RESET_ALL}{border_color}|{Style.RESET_ALL}", end="")
+            print()
+            
+            # Middle line of square (with piece)
+            print(f" {coord_color}{8 - row}   {Style.RESET_ALL}", end="")
+            print(f"{border_color}|{Style.RESET_ALL}", end="")
+            
             for col in range(8):
                 piece = self.squares[row][col]
                 bg_color = Back.WHITE if (row + col) % 2 == 0 else Back.BLACK
                 if piece:
-                    print(f"{bg_color}{piece}{Style.RESET_ALL}", end=" ")
+                    # Keep background color consistent across the entire square
+                    print(f"{bg_color}  {piece}  {Style.RESET_ALL}{border_color}|{Style.RESET_ALL}", end="")
                 else:
-                    print(f"{bg_color} {Style.RESET_ALL}", end=" ")
-            print(f"| {8 - row}")
-        print("   ---------------")
-        print("   a b c d e f g h")
+                    print(f"{bg_color}     {Style.RESET_ALL}{border_color}|{Style.RESET_ALL}", end="")
+            print(f" {coord_color}{8 - row}{Style.RESET_ALL}")
+            
+            # Bottom line of square (empty)
+            print(f"     {border_color}|{Style.RESET_ALL}", end="")
+            for col in range(8):
+                bg_color = Back.WHITE if (row + col) % 2 == 0 else Back.BLACK
+                print(f"{bg_color}     {Style.RESET_ALL}{border_color}|{Style.RESET_ALL}", end="")
+            print()
+            
+            # Horizontal line between rows
+            print("     ", end="")
+            print(f"{border_color}+-----+-----+-----+-----+-----+-----+-----+-----+{Style.RESET_ALL}")
+        
+        # Column coordinates at bottom
+        print("        ", end="")
+        for col in range(8):
+            print(f"{coord_color}{chr(97 + col)}   {Style.RESET_ALL}", end="  ")
+        print("\n")
 
     def evaluate_position(self) -> float:
         """Evaluate the current board position from white's perspective."""
