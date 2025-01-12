@@ -2,6 +2,7 @@
 
 import sys
 import os
+import random
 from enum import Enum
 from dataclasses import dataclass
 from typing import List, Tuple, Optional
@@ -30,6 +31,19 @@ class PieceType(Enum):
     BISHOP = "B"
     KNIGHT = "N"
     PAWN = "P"
+
+    @property
+    def value_score(self) -> int:
+        """Return the relative value score of each piece type."""
+        VALUES = {
+            PieceType.KING: 0,  # Special case, not used in evaluation
+            PieceType.QUEEN: 9,
+            PieceType.ROOK: 5,
+            PieceType.BISHOP: 3,
+            PieceType.KNIGHT: 3,
+            PieceType.PAWN: 1
+        }
+        return VALUES[self]
 
 @dataclass
 class Position:
@@ -247,16 +261,195 @@ class Board:
         print("   ---------------")
         print("   a b c d e f g h")
 
+    def evaluate_position(self) -> float:
+        """Evaluate the current board position from white's perspective."""
+        score = 0.0
+        
+        # Piece values and positions
+        for row in range(8):
+            for col in range(8):
+                piece = self.squares[row][col]
+                if not piece:
+                    continue
+                    
+                piece_value = piece.piece_type.value_score
+                position_bonus = self._get_position_bonus(piece, row, col)
+                
+                if piece.color == PieceColor.WHITE:
+                    score += piece_value + position_bonus
+                else:
+                    score -= piece_value + position_bonus
+                    
+        return score
+
+    def _get_position_bonus(self, piece: Piece, row: int, col: int) -> float:
+        """Calculate position bonus based on piece type and position."""
+        bonus = 0.0
+        
+        # Pawns are more valuable as they advance
+        if piece.piece_type == PieceType.PAWN:
+            if piece.color == PieceColor.WHITE:
+                bonus = (7 - row) * 0.1  # Bonus for advancing
+            else:
+                bonus = row * 0.1
+        
+        # Control of center squares
+        if 2 <= row <= 5 and 2 <= col <= 5:
+            bonus += 0.2
+            
+        # Knights are better near the center
+        if piece.piece_type == PieceType.KNIGHT:
+            distance_from_center = abs(3.5 - row) + abs(3.5 - col)
+            bonus += (8 - distance_from_center) * 0.1
+            
+        return bonus
+
+    def get_all_valid_moves(self, color: PieceColor) -> List[Tuple[Position, Position]]:
+        """Get all valid moves for a given color."""
+        moves = []
+        for row in range(8):
+            for col in range(8):
+                piece = self.squares[row][col]
+                if piece and piece.color == color:
+                    valid_moves = piece.get_valid_moves(self)
+                    moves.extend([(piece.position, move) for move in valid_moves])
+        return moves
+
+    def clone(self) -> 'Board':
+        """Create a deep copy of the board for move simulation."""
+        new_board = Board()
+        new_board.squares = [[None for _ in range(8)] for _ in range(8)]
+        
+        for row in range(8):
+            for col in range(8):
+                piece = self.squares[row][col]
+                if piece:
+                    new_pos = Position(row, col)
+                    new_piece = Piece(piece.piece_type, piece.color, new_pos)
+                    new_piece.has_moved = piece.has_moved
+                    new_board.squares[row][col] = new_piece
+                    
+        return new_board
+
+class SystemPlayer:
+    def __init__(self, color: PieceColor, difficulty: int = 2):
+        self.color = color
+        self.difficulty = difficulty  # Search depth
+
+    def get_move(self, board: Board) -> Tuple[Position, Position]:
+        """Get the best move for the system player."""
+        best_score = float('-inf') if self.color == PieceColor.WHITE else float('inf')
+        best_move = None
+        
+        valid_moves = board.get_all_valid_moves(self.color)
+        random.shuffle(valid_moves)  # Add some randomization to equal-valued moves
+        
+        for from_pos, to_pos in valid_moves:
+            # Create a copy of the board to simulate the move
+            temp_board = board.clone()
+            temp_board.move_piece(from_pos, to_pos)
+            
+            # Evaluate the move
+            if self.difficulty <= 1:
+                score = temp_board.evaluate_position()
+            else:
+                score = self._minimax(temp_board, self.difficulty - 1, 
+                                   float('-inf'), float('inf'),
+                                   self.color != PieceColor.WHITE)
+            
+            # Update best move
+            if self.color == PieceColor.WHITE:
+                if score > best_score:
+                    best_score = score
+                    best_move = (from_pos, to_pos)
+            else:
+                if score < best_score:
+                    best_score = score
+                    best_move = (from_pos, to_pos)
+        
+        return best_move
+
+    def _minimax(self, board: Board, depth: int, alpha: float, beta: float, 
+                is_maximizing: bool) -> float:
+        """Minimax algorithm with alpha-beta pruning."""
+        if depth == 0:
+            return board.evaluate_position()
+            
+        color = PieceColor.WHITE if is_maximizing else PieceColor.BLACK
+        valid_moves = board.get_all_valid_moves(color)
+        
+        if not valid_moves:  # No valid moves available
+            return float('-inf') if is_maximizing else float('inf')
+            
+        if is_maximizing:
+            max_eval = float('-inf')
+            for from_pos, to_pos in valid_moves:
+                temp_board = board.clone()
+                temp_board.move_piece(from_pos, to_pos)
+                eval = self._minimax(temp_board, depth - 1, alpha, beta, False)
+                max_eval = max(max_eval, eval)
+                alpha = max(alpha, eval)
+                if beta <= alpha:
+                    break
+            return max_eval
+        else:
+            min_eval = float('inf')
+            for from_pos, to_pos in valid_moves:
+                temp_board = board.clone()
+                temp_board.move_piece(from_pos, to_pos)
+                eval = self._minimax(temp_board, depth - 1, alpha, beta, True)
+                min_eval = min(min_eval, eval)
+                beta = min(beta, eval)
+                if beta <= alpha:
+                    break
+            return min_eval
+
 class ChessGame:
     def __init__(self):
         self.board = Board()
         self.current_player = PieceColor.WHITE
         self.game_over = False
+        self.system_player = None
 
-    def play(self):
+    def _get_game_mode(self) -> Optional[PieceColor]:
+        """Get the game mode from user input."""
         clear_screen()
         print("Welcome to CLI Chess!")
-        print("Enter moves in the format: 'e2 e4' or type 'quit' to exit")
+        print("\nSelect game mode:")
+        print("1. Player vs Player")
+        print("2. Player vs System (you play White)")
+        print("3. Player vs System (you play Black)")
+        print("4. Quit")
+        
+        while True:
+            try:
+                choice = input("\nEnter your choice (1-4): ").strip()
+                if choice == "1":
+                    return None
+                elif choice == "2":
+                    return PieceColor.BLACK
+                elif choice == "3":
+                    return PieceColor.WHITE
+                elif choice == "4":
+                    self.game_over = True
+                    return None
+                else:
+                    print("Invalid choice. Please enter 1-4.")
+            except ValueError:
+                print("Invalid input. Please enter a number.")
+
+    def play(self):
+        # Get game mode
+        system_color = self._get_game_mode()
+        if self.game_over:
+            clear_screen()
+            print("Thanks for playing!")
+            return
+            
+        if system_color:
+            self.system_player = SystemPlayer(system_color)
+            print(f"\nPlaying against system (Difficulty: {self.system_player.difficulty})")
+        
         print("\nPress Enter to start...")
         input()
         
@@ -264,6 +457,20 @@ class ChessGame:
             self.board.display()
             print(f"\n{self.current_player.value}'s turn")
             
+            # System player's turn
+            if self.system_player and self.system_player.color == self.current_player:
+                print("System is thinking...")
+                from_pos, to_pos = self.system_player.get_move(self.board)
+                self.board.move_piece(from_pos, to_pos)
+                print(f"System moved: {from_pos.to_algebraic()} {to_pos.to_algebraic()}")
+                input("\nPress Enter to continue...")
+                self.current_player = (
+                    PieceColor.BLACK if self.current_player == PieceColor.WHITE 
+                    else PieceColor.WHITE
+                )
+                continue
+            
+            # Human player's turn
             move = input("Enter your move: ").strip().lower()
             
             if move == 'quit':
