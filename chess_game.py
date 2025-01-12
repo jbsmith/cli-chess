@@ -305,6 +305,7 @@ class Board:
         self.squares = [[None for _ in range(8)] for _ in range(8)]
         self._setup_board()
         self.last_pawn_move = None  # Tuple of (from_pos, to_pos) for en passant
+        self.move_history = []  # List of tuples (from_pos, to_pos, piece_type, color)
 
     def _setup_board(self):
         # Setup white pieces
@@ -340,6 +341,64 @@ class Board:
             return self.squares[position.row][position.col]
         return None
 
+    def _get_san_move(self, from_pos: Position, to_pos: Position, piece: Piece, captured_piece: Optional[Piece] = None) -> str:
+        """Generate Standard Algebraic Notation (SAN) for a move."""
+        # Basic move
+        piece_letter = "" if piece.piece_type == PieceType.PAWN else piece.piece_type.value
+        move_str = ""
+        
+        # Handle pawn captures
+        if piece.piece_type == PieceType.PAWN and from_pos.col != to_pos.col:
+            move_str = f"{chr(97 + from_pos.col)}x"
+        # Handle other captures
+        elif captured_piece:
+            move_str = f"{piece_letter}x"
+        else:
+            move_str = piece_letter
+            
+        # Add disambiguation if needed
+        if piece.piece_type != PieceType.PAWN:
+            similar_pieces = []
+            for row in range(8):
+                for col in range(8):
+                    other_piece = self.squares[row][col]
+                    if (other_piece and other_piece != piece and 
+                        other_piece.piece_type == piece.piece_type and
+                        other_piece.color == piece.color):
+                        other_moves = other_piece.get_valid_moves(self)
+                        if to_pos in other_moves:
+                            similar_pieces.append(Position(row, col))
+            
+            if similar_pieces:
+                # First try just file
+                if all(p.col != from_pos.col for p in similar_pieces):
+                    move_str += chr(97 + from_pos.col)
+                # Then try just rank
+                elif all(p.row != from_pos.row for p in similar_pieces):
+                    move_str += str(8 - from_pos.row)
+                # Finally use both
+                else:
+                    move_str += f"{chr(97 + from_pos.col)}{8 - from_pos.row}"
+        
+        # Add destination square
+        move_str += f"{chr(97 + to_pos.col)}{8 - to_pos.row}"
+        
+        # Test the move for check/checkmate
+        self.squares[to_pos.row][to_pos.col] = piece
+        self.squares[from_pos.row][from_pos.col] = None
+        
+        opponent_color = PieceColor.BLACK if piece.color == PieceColor.WHITE else PieceColor.WHITE
+        if self.is_checkmate(opponent_color):
+            move_str += "#"
+        elif self.is_king_in_check(opponent_color):
+            move_str += "+"
+            
+        # Undo the test move
+        self.squares[from_pos.row][from_pos.col] = piece
+        self.squares[to_pos.row][to_pos.col] = captured_piece
+        
+        return move_str
+
     def move_piece(self, from_pos: Position, to_pos: Position) -> Tuple[bool, Optional[str]]:
         """Move a piece and return (success, error_message)."""
         piece = self.squares[from_pos.row][from_pos.col]
@@ -366,6 +425,10 @@ class Board:
             
         # Try the move
         captured_piece = self.squares[to_pos.row][to_pos.col]
+        
+        # Generate SAN before making the move
+        san_move = self._get_san_move(from_pos, to_pos, piece, captured_piece)
+        
         self.squares[to_pos.row][to_pos.col] = piece
         self.squares[from_pos.row][from_pos.col] = None
         
@@ -376,7 +439,10 @@ class Board:
             self.squares[to_pos.row][to_pos.col] = captured_piece
             return False, "Move would leave your king in check"
             
-        # Update piece's internal position
+        # Record the move in history with SAN
+        move_record = (from_pos, to_pos, piece.piece_type, piece.color, san_move)
+        self.move_history.append(move_record)
+        
         piece.position = to_pos
         piece.has_moved = True
         return True, None
@@ -470,6 +536,9 @@ class Board:
     def display(self):
         # Clear screen before drawing
         clear_screen()
+        move_index = len(self.move_history) - 1  # Start from the last move
+        moves_displayed = 0
+        max_moves_to_show = 72
         
         # Board border and coordinate styling
         border_color = Style.BRIGHT + Fore.YELLOW
@@ -479,26 +548,55 @@ class Board:
         light_square = "\033[48;5;238m"  # Darker gray for "white" squares
         dark_square = Back.BLACK
         
+        # Calculate the width needed for the move history
+        move_history_width = 20
+        
         print("\n")  # Extra spacing at top
         
-        # Column coordinates at top
+        # Column coordinates at top with space for move history
         print("        ", end="")
         for col in range(8):
             print(f"{coord_color}{chr(97 + col)}   {Style.RESET_ALL}", end="  ")
-        print("\n")
+        print(" " * 4 + "Move History")
         
-        # Top border
+        # Top border with space for move history
         print("     ", end="")
-        print(f"{border_color}+-----+-----+-----+-----+-----+-----+-----+-----+{Style.RESET_ALL}")
+        print(f"{border_color}+-----+-----+-----+-----+-----+-----+-----+-----+{Style.RESET_ALL}", end="")
+        
+        # Display move history entry
+        if move_index >= 0 and moves_displayed < max_moves_to_show:
+            _, _, _, color, san_move = self.move_history[move_index]
+            move_number = (move_index + 2) // 2
+            if color == PieceColor.WHITE:
+                move_str = f"{move_number}. {san_move}"
+            else:
+                move_str = f"{move_number}... {san_move}"
+            print(f"    {move_str:<14}", end="")
+            move_index -= 1
+            moves_displayed += 1
+        print()
         
         # Board squares
         for row in range(8):
             # First line of square (empty)
-            print(f"     {border_color}|{Style.RESET_ALL}", end="")
+            print("     ", end="")
+            print(f"{border_color}|{Style.RESET_ALL}", end="")
             for col in range(8):
                 # In chess, a1 (bottom-left) is dark, so we flip the pattern
                 bg_color = dark_square if (row + col) % 2 == 0 else light_square
                 print(f"{bg_color}     {Style.RESET_ALL}{border_color}|{Style.RESET_ALL}", end="")
+            
+            # Display move history entry
+            if move_index >= 0 and moves_displayed < max_moves_to_show:
+                _, _, _, color, san_move = self.move_history[move_index]
+                move_number = (move_index + 2) // 2
+                if color == PieceColor.WHITE:
+                    move_str = f"{move_number}. {san_move}"
+                else:
+                    move_str = f"{move_number}... {san_move}"
+                print(f"    {move_str:<14}", end="")
+                move_index -= 1
+                moves_displayed += 1
             print()
             
             # Middle line of square (with piece)
@@ -514,19 +612,57 @@ class Board:
                     print(f"{bg_color}  {piece}  {Style.RESET_ALL}{border_color}|{Style.RESET_ALL}", end="")
                 else:
                     print(f"{bg_color}     {Style.RESET_ALL}{border_color}|{Style.RESET_ALL}", end="")
-            print(f" {coord_color}{8 - row}{Style.RESET_ALL}")
+            
+            # Display move history entry
+            if move_index >= 0 and moves_displayed < max_moves_to_show:
+                _, _, _, color, san_move = self.move_history[move_index]
+                move_number = (move_index + 2) // 2
+                if color == PieceColor.WHITE:
+                    move_str = f"{move_number}. {san_move}"
+                else:
+                    move_str = f"{move_number}... {san_move}"
+                print(f"    {move_str:<14}", end="")
+                move_index -= 1
+                moves_displayed += 1
+            print()
             
             # Bottom line of square (empty)
-            print(f"     {border_color}|{Style.RESET_ALL}", end="")
+            print("     ", end="")
+            print(f"{border_color}|{Style.RESET_ALL}", end="")
             for col in range(8):
                 # In chess, a1 (bottom-left) is dark, so we flip the pattern
                 bg_color = dark_square if (row + col) % 2 == 0 else light_square
                 print(f"{bg_color}     {Style.RESET_ALL}{border_color}|{Style.RESET_ALL}", end="")
+            
+            # Display move history entry
+            if move_index >= 0 and moves_displayed < max_moves_to_show:
+                _, _, _, color, san_move = self.move_history[move_index]
+                move_number = (move_index + 2) // 2
+                if color == PieceColor.WHITE:
+                    move_str = f"{move_number}. {san_move}"
+                else:
+                    move_str = f"{move_number}... {san_move}"
+                print(f"    {move_str:<14}", end="")
+                move_index -= 1
+                moves_displayed += 1
             print()
             
             # Horizontal line between rows
             print("     ", end="")
-            print(f"{border_color}+-----+-----+-----+-----+-----+-----+-----+-----+{Style.RESET_ALL}")
+            print(f"{border_color}+-----+-----+-----+-----+-----+-----+-----+-----+{Style.RESET_ALL}", end="")
+            
+            # Display move history entry on separator line
+            if move_index >= 0 and moves_displayed < max_moves_to_show:
+                _, _, _, color, san_move = self.move_history[move_index]
+                move_number = (move_index + 2) // 2
+                if color == PieceColor.WHITE:
+                    move_str = f"{move_number}. {san_move}"
+                else:
+                    move_str = f"{move_number}... {san_move}"
+                print(f"    {move_str:<14}", end="")
+                move_index -= 1
+                moves_displayed += 1
+            print()
         
         # Column coordinates at bottom
         print("        ", end="")
