@@ -302,6 +302,8 @@ class Board:
         self.squares = [[None for _ in range(8)] for _ in range(8)]
         self._setup_board()
         self.last_pawn_move = None  # Tuple of (from_pos, to_pos) for en passant
+        self.move_history = []  # List of tuples (from_pos, to_pos, piece_type, color)
+        self.current_player = PieceColor.WHITE
 
     def _setup_board(self):
         # Setup white pieces
@@ -343,6 +345,9 @@ class Board:
         if not piece:
             return False, "No piece at starting position"
             
+        if piece.color != self.current_player:
+            return False, "Not your turn"
+
         # Check if move is in piece's valid moves
         valid_moves = piece.get_valid_moves(self)
         if to_pos not in valid_moves:
@@ -372,11 +377,104 @@ class Board:
             self.squares[from_pos.row][from_pos.col] = piece
             self.squares[to_pos.row][to_pos.col] = captured_piece
             return False, "Move would leave your king in check"
-            
-        # Update piece's internal position
+
+        # Record move in history
+        self.move_history.append((from_pos, to_pos, piece.piece_type, piece.color))
+        
+        # Update piece's internal position and switch players
         piece.position = to_pos
         piece.has_moved = True
+        self.current_player = PieceColor.BLACK if self.current_player == PieceColor.WHITE else PieceColor.WHITE
         return True, None
+
+    def get_all_valid_moves(self, color: PieceColor) -> List[Tuple[Position, Position]]:
+        """Get all valid moves for a given color."""
+        moves = []
+        for row in range(8):
+            for col in range(8):
+                piece = self.squares[row][col]
+                if piece and piece.color == color:
+                    valid_moves = piece.get_valid_moves(self)
+                    moves.extend([(Position(row, col), move) for move in valid_moves])
+        return moves
+
+    def make_computer_move(self, color: PieceColor, depth: int = 3) -> bool:
+        """Make a move for the computer using minimax with alpha-beta pruning."""
+        best_score = float('-inf') if color == PieceColor.WHITE else float('inf')
+        best_move = None
+        
+        valid_moves = self.get_all_valid_moves(color)
+        if not valid_moves:
+            return False
+            
+        for from_pos, to_pos in valid_moves:
+            # Try move
+            piece = self.squares[from_pos.row][from_pos.col]
+            captured = self.squares[to_pos.row][to_pos.col]
+            self.squares[to_pos.row][to_pos.col] = piece
+            self.squares[from_pos.row][from_pos.col] = None
+            
+            # Evaluate position
+            score = self.minimax(depth - 1, float('-inf'), float('inf'), color != PieceColor.WHITE)
+            
+            # Undo move
+            self.squares[from_pos.row][from_pos.col] = piece
+            self.squares[to_pos.row][to_pos.col] = captured
+            
+            # Update best move
+            if color == PieceColor.WHITE and score > best_score:
+                best_score = score
+                best_move = (from_pos, to_pos)
+            elif color == PieceColor.BLACK and score < best_score:
+                best_score = score
+                best_move = (from_pos, to_pos)
+        
+        if best_move:
+            success, _ = self.move_piece(best_move[0], best_move[1])
+            return success
+        return False
+
+    def minimax(self, depth: int, alpha: float, beta: float, maximizing: bool) -> float:
+        """Minimax algorithm with alpha-beta pruning."""
+        if depth == 0:
+            return self.evaluate_position()
+            
+        if maximizing:
+            max_eval = float('-inf')
+            for from_pos, to_pos in self.get_all_valid_moves(PieceColor.WHITE):
+                piece = self.squares[from_pos.row][from_pos.col]
+                captured = self.squares[to_pos.row][to_pos.col]
+                self.squares[to_pos.row][to_pos.col] = piece
+                self.squares[from_pos.row][from_pos.col] = None
+                
+                eval = self.minimax(depth - 1, alpha, beta, False)
+                
+                self.squares[from_pos.row][from_pos.col] = piece
+                self.squares[to_pos.row][to_pos.col] = captured
+                
+                max_eval = max(max_eval, eval)
+                alpha = max(alpha, eval)
+                if beta <= alpha:
+                    break
+            return max_eval
+        else:
+            min_eval = float('inf')
+            for from_pos, to_pos in self.get_all_valid_moves(PieceColor.BLACK):
+                piece = self.squares[from_pos.row][from_pos.col]
+                captured = self.squares[to_pos.row][to_pos.col]
+                self.squares[to_pos.row][to_pos.col] = piece
+                self.squares[from_pos.row][from_pos.col] = None
+                
+                eval = self.minimax(depth - 1, alpha, beta, True)
+                
+                self.squares[from_pos.row][from_pos.col] = piece
+                self.squares[to_pos.row][to_pos.col] = captured
+                
+                min_eval = min(min_eval, eval)
+                beta = min(beta, eval)
+                if beta <= alpha:
+                    break
+            return min_eval
 
     def is_king_in_check(self, color: PieceColor) -> bool:
         """Check if the king of given color is in check."""
@@ -526,248 +624,182 @@ class Board:
             
         return bonus
 
-    def get_all_valid_moves(self, color: PieceColor) -> List[Tuple[Position, Position]]:
-        """Get all valid moves for a given color."""
-        moves = []
-        for row in range(8):
-            for col in range(8):
-                piece = self.squares[row][col]
-                if piece and piece.color == color:
-                    valid_moves = piece.get_valid_moves(self)
-                    moves.extend([(piece.position, move) for move in valid_moves])
-        return moves
-
-    def clone(self) -> 'Board':
-        """Create a deep copy of the board for move simulation."""
-        new_board = Board()
-        new_board.squares = [[None for _ in range(8)] for _ in range(8)]
+    def play_computer_vs_computer(self, max_moves: int = 50, delay: float = 1.0):
+        """Simulate a game between two computer players."""
+        import time
         
-        for row in range(8):
-            for col in range(8):
-                piece = self.squares[row][col]
-                if piece:
-                    new_pos = Position(row, col)
-                    new_piece = Piece(piece.piece_type, piece.color, new_pos)
-                    new_piece.has_moved = piece.has_moved
-                    new_board.squares[row][col] = new_piece
-                    
-        return new_board
-
-class SystemPlayer:
-    def __init__(self, color: PieceColor, difficulty: int = 2):
-        self.color = color
-        self.difficulty = difficulty  # Search depth
-
-    def get_move(self, board: Board) -> Tuple[Position, Position]:
-        """Get the best move for the system player."""
-        best_score = float('-inf') if self.color == PieceColor.WHITE else float('inf')
-        best_move = None
-        
-        valid_moves = board.get_all_valid_moves(self.color)
-        random.shuffle(valid_moves)  # Add some randomization to equal-valued moves
-        
-        for from_pos, to_pos in valid_moves:
-            # Create a copy of the board to simulate the move
-            temp_board = board.clone()
-            temp_board.move_piece(from_pos, to_pos)
+        move_count = 0
+        while move_count < max_moves:
+            self.display()
+            time.sleep(delay)
             
-            # Evaluate the move
-            if self.difficulty <= 1:
-                score = temp_board.evaluate_position()
-            else:
-                score = self._minimax(temp_board, self.difficulty - 1, 
-                                   float('-inf'), float('inf'),
-                                   self.color != PieceColor.WHITE)
+            # Check for game end conditions
+            if self.is_checkmate(self.current_player):
+                winner = "Black" if self.current_player == PieceColor.WHITE else "White"
+                print(f"\nCheckmate! {winner} wins!")
+                break
+            elif self.is_stalemate(self.current_player):
+                print("\nStalemate! Game is a draw.")
+                break
+                
+            # Make computer move
+            if not self.make_computer_move(self.current_player):
+                print(f"\nNo valid moves for {self.current_player.value}. Game over!")
+                break
+                
+            move_count += 1
             
-            # Update best move
-            if self.color == PieceColor.WHITE:
-                if score > best_score:
-                    best_score = score
-                    best_move = (from_pos, to_pos)
-            else:
-                if score < best_score:
-                    best_score = score
-                    best_move = (from_pos, to_pos)
-        
-        return best_move
+        if move_count >= max_moves:
+            print("\nGame ended due to move limit.")
+            
+        self.display()  # Show final position
 
-    def _minimax(self, board: Board, depth: int, alpha: float, beta: float, 
-                is_maximizing: bool) -> float:
-        """Minimax algorithm with alpha-beta pruning."""
-        if depth == 0:
-            return board.evaluate_position()
-            
-        color = PieceColor.WHITE if is_maximizing else PieceColor.BLACK
-        valid_moves = board.get_all_valid_moves(color)
-        
-        if not valid_moves:  # No valid moves available
-            return float('-inf') if is_maximizing else float('inf')
-            
-        if is_maximizing:
-            max_eval = float('-inf')
-            for from_pos, to_pos in valid_moves:
-                temp_board = board.clone()
-                temp_board.move_piece(from_pos, to_pos)
-                eval = self._minimax(temp_board, depth - 1, alpha, beta, False)
-                max_eval = max(max_eval, eval)
-                alpha = max(alpha, eval)
-                if beta <= alpha:
-                    break
-            return max_eval
-        else:
-            min_eval = float('inf')
-            for from_pos, to_pos in valid_moves:
-                temp_board = board.clone()
-                temp_board.move_piece(from_pos, to_pos)
-                eval = self._minimax(temp_board, depth - 1, alpha, beta, True)
-                min_eval = min(min_eval, eval)
-                beta = min(beta, eval)
-                if beta <= alpha:
-                    break
-            return min_eval
-
-class ChessGame:
+class Game:
     def __init__(self):
         self.board = Board()
-        self.current_player = PieceColor.WHITE
-        self.game_over = False
-        self.system_player = None
 
-    def _get_game_mode(self) -> Optional[PieceColor]:
-        """Get the game mode from user input."""
+    def show_menu(self) -> str:
+        """Display game mode menu and return selected mode."""
         clear_screen()
-        print("Welcome to CLI Chess!")
+        print("\nWelcome to CLI Chess!")
         print("\nSelect game mode:")
         print("1. Player vs Player")
-        print("2. Player vs System (you play White)")
-        print("3. Player vs System (you play Black)")
-        print("4. Quit")
-        
+        print("2. Player vs Computer (play as White)")
+        print("3. Player vs Computer (play as Black)")
+        print("4. Computer vs Computer")
+        print("5. Quit")
+
         while True:
             try:
-                choice = input("\nEnter your choice (1-4): ").strip()
+                choice = input("\nEnter your choice (1-5): ").strip()
                 if choice == "1":
-                    return None
+                    return "human"
                 elif choice == "2":
-                    return PieceColor.BLACK
+                    return "white"
                 elif choice == "3":
-                    return PieceColor.WHITE
+                    return "black"
                 elif choice == "4":
-                    self.game_over = True
-                    return None
+                    return "computer"
+                elif choice == "5":
+                    return "quit"
                 else:
-                    print("Invalid choice. Please enter 1-4.")
+                    print("Invalid choice. Please enter 1-5.")
             except ValueError:
                 print("Invalid input. Please enter a number.")
 
     def play(self):
-        # Get game mode
-        system_color = self._get_game_mode()
-        if self.game_over:
-            clear_screen()
-            print("Thanks for playing!")
-            return
+        """Main game loop with menu selection."""
+        while True:
+            mode = self.show_menu()
             
-        if system_color:
-            self.system_player = SystemPlayer(system_color)
-            print(f"\nPlaying against system (Difficulty: {self.system_player.difficulty})")
-        
-        print("\nPress Enter to start...")
-        input()
-        
-        while not self.game_over:
-            self.board.display()
-            print(f"\n{self.current_player.value}'s turn")
-            
-            # System player's turn
-            if self.system_player and self.system_player.color == self.current_player:
-                print("System is thinking...")
-                from_pos, to_pos = self.system_player.get_move(self.board)
-                self.board.move_piece(from_pos, to_pos)
-                print(f"System moved: {from_pos.to_algebraic()} {to_pos.to_algebraic()}")
-                self.current_player = (
-                    PieceColor.BLACK if self.current_player == PieceColor.WHITE 
-                    else PieceColor.WHITE
-                )
-                continue
-            
-            # Human player's turn
-            move = input("Enter your move: ").strip().lower()
-            
-            if move == 'quit':
+            if mode == "quit":
                 clear_screen()
                 print("Thanks for playing!")
                 break
-            elif move == 'help':
-                self._show_help()
-                input("\nPress Enter to continue...")
-                continue
                 
+            clear_screen()
+            if mode == "computer":
+                print("\nComputer vs Computer match")
+                print("Press Ctrl+C to stop the game")
+                input("Press Enter to start...")
+                self.board = Board()  # Reset board
+                self.board.play_computer_vs_computer()
+            elif mode in ["white", "black"]:
+                computer_color = PieceColor.BLACK if mode == "white" else PieceColor.WHITE
+                print(f"\nPlaying as {'White' if mode == 'white' else 'Black'}")
+                print("Enter moves in algebraic notation (e.g., 'e2 e4')")
+                print("Type 'quit' to return to menu")
+                input("Press Enter to start...")
+                self.board = Board()  # Reset board
+                self.play_vs_computer(computer_color)
+            else:  # human vs human
+                print("\nPlayer vs Player match")
+                print("Enter moves in algebraic notation (e.g., 'e2 e4')")
+                print("Type 'quit' to return to menu")
+                input("Press Enter to start...")
+                self.board = Board()  # Reset board
+                self.play_human()
+
+    def play_human(self):
+        """Human vs Human game mode."""
+        while True:
+            self.board.display()
+            
             try:
-                from_pos, to_pos = self._parse_move(move)
-                success, error_msg = self._make_move(from_pos, to_pos)
-                if not success:
-                    print(f"Invalid move: {error_msg}")
-                    input("\nPress Enter to continue...")
-            except ValueError as e:
-                print(f"Error: {e}")
-                input("\nPress Enter to continue...")
+                move = input(f"\n{self.board.current_player.value}'s move (e.g., e2 e4): ").strip().lower()
+                if move == "quit":
+                    break
+                    
+                from_sq, to_sq = move.split()
+                from_pos = Position(8 - int(from_sq[1]), ord(from_sq[0]) - ord('a'))
+                to_pos = Position(8 - int(to_sq[1]), ord(to_sq[0]) - ord('a'))
                 
-    def _parse_move(self, move: str) -> Tuple[Position, Position]:
-        parts = move.split()
-        if len(parts) != 2:
-            raise ValueError("Invalid move format. Use 'e2 e4' format.")
-            
-        try:
-            from_pos = Position.from_algebraic(parts[0])
-            to_pos = Position.from_algebraic(parts[1])
-            return from_pos, to_pos
-        except (IndexError, ValueError):
-            raise ValueError("Invalid position notation.")
+                success, error = self.board.move_piece(from_pos, to_pos)
+                if not success:
+                    print(f"Invalid move: {error}")
+                    input("Press Enter to continue...")
+                    continue
+                    
+                if self.board.is_checkmate(self.board.current_player):
+                    self.board.display()
+                    winner = "Black" if self.board.current_player == PieceColor.WHITE else "White"
+                    print(f"\nCheckmate! {winner} wins!")
+                    input("\nPress Enter to return to menu...")
+                    break
+                elif self.board.is_stalemate(self.board.current_player):
+                    self.board.display()
+                    print("\nStalemate! Game is a draw.")
+                    input("\nPress Enter to return to menu...")
+                    break
+                    
+            except (ValueError, IndexError):
+                print("Invalid input format. Use 'e2 e4' format or 'quit' to return to menu.")
+                input("Press Enter to continue...")
 
-    def _make_move(self, from_pos: Position, to_pos: Position) -> Tuple[bool, Optional[str]]:
-        piece = self.board.get_piece(from_pos)
-        if not piece:
-            return False, "No piece at starting position"
+    def play_vs_computer(self, computer_color: PieceColor):
+        """Human vs Computer game mode."""
+        while True:
+            self.board.display()
             
-        if piece.color != self.current_player:
-            return False, f"That's not your piece (it's {piece.color.value}'s)"
-            
-        # Check if move is valid and doesn't leave/put king in check
-        success, error_msg = self.board.move_piece(from_pos, to_pos)
-        if not success:
-            if self.board.is_king_in_check(self.current_player):
-                return False, f"{error_msg} (Your king is in check)"
+            if self.board.current_player == computer_color:
+                print("\nComputer is thinking...")
+                if not self.board.make_computer_move(computer_color):
+                    print("\nNo valid moves for computer. Game over!")
+                    input("\nPress Enter to return to menu...")
+                    break
             else:
-                return False, error_msg
-            
-        # Check if move puts opponent in check/checkmate
-        opponent_color = (PieceColor.BLACK if self.current_player == PieceColor.WHITE 
-                         else PieceColor.WHITE)
-        
-        if self.board.is_checkmate(opponent_color):
-            self.board.display()
-            print(f"\nCheckmate! {self.current_player.value} wins!")
-            self.game_over = True
-        elif self.board.is_king_in_check(opponent_color):
-            print(f"\n{opponent_color.value} is in check!")
-        elif self.board.is_stalemate(opponent_color):
-            self.board.display()
-            print("\nStalemate! Game is a draw.")
-            self.game_over = True
-            
-        self.current_player = (
-            PieceColor.BLACK if self.current_player == PieceColor.WHITE 
-            else PieceColor.WHITE
-        )
-        return True, None
-
-    def _show_help(self):
-        print("\nGame Controls:")
-        print("- Enter moves in algebraic notation (e.g., 'e2 e4')")
-        print("- Type 'quit' to exit the game")
-        print("- Type 'help' to see this message again")
+                try:
+                    move = input(f"\nYour move (e.g., e2 e4): ").strip().lower()
+                    if move == "quit":
+                        break
+                        
+                    from_sq, to_sq = move.split()
+                    from_pos = Position(8 - int(from_sq[1]), ord(from_sq[0]) - ord('a'))
+                    to_pos = Position(8 - int(to_sq[1]), ord(to_sq[0]) - ord('a'))
+                    
+                    success, error = self.board.move_piece(from_pos, to_pos)
+                    if not success:
+                        print(f"Invalid move: {error}")
+                        input("Press Enter to continue...")
+                        continue
+                        
+                except (ValueError, IndexError):
+                    print("Invalid input format. Use 'e2 e4' format or 'quit' to return to menu.")
+                    input("Press Enter to continue...")
+                    continue
+                    
+            if self.board.is_checkmate(self.board.current_player):
+                self.board.display()
+                winner = "Black" if self.board.current_player == PieceColor.WHITE else "White"
+                print(f"\nCheckmate! {winner} wins!")
+                input("\nPress Enter to return to menu...")
+                break
+            elif self.board.is_stalemate(self.board.current_player):
+                self.board.display()
+                print("\nStalemate! Game is a draw.")
+                input("\nPress Enter to return to menu...")
+                break
 
 if __name__ == "__main__":
-    game = ChessGame()
+    game = Game()
     game.play()
