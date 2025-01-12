@@ -1,6 +1,6 @@
 # CLI Chess Game
 
-A command-line implementation of chess where two players can play against each other on an 8x8 board.
+A command-line implementation of chess where two players can play against each other or the system.
 
 ## Features
 - ASCII color representation of the chess board
