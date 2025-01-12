@@ -308,32 +308,32 @@ class Board:
 
     def _setup_board(self):
         # Setup white pieces
-        self._place_piece(PieceType.ROOK, PieceColor.WHITE, Position(7, 0))
-        self._place_piece(PieceType.KNIGHT, PieceColor.WHITE, Position(7, 1))
-        self._place_piece(PieceType.BISHOP, PieceColor.WHITE, Position(7, 2))
-        self._place_piece(PieceType.QUEEN, PieceColor.WHITE, Position(7, 3))
-        self._place_piece(PieceType.KING, PieceColor.WHITE, Position(7, 4))
-        self._place_piece(PieceType.BISHOP, PieceColor.WHITE, Position(7, 5))
-        self._place_piece(PieceType.KNIGHT, PieceColor.WHITE, Position(7, 6))
-        self._place_piece(PieceType.ROOK, PieceColor.WHITE, Position(7, 7))
+        # Back row
+        self.squares[7][0] = Piece(PieceType.ROOK, PieceColor.WHITE, Position(7, 0))
+        self.squares[7][1] = Piece(PieceType.KNIGHT, PieceColor.WHITE, Position(7, 1))
+        self.squares[7][2] = Piece(PieceType.BISHOP, PieceColor.WHITE, Position(7, 2))
+        self.squares[7][3] = Piece(PieceType.QUEEN, PieceColor.WHITE, Position(7, 3))  # d1
+        self.squares[7][4] = Piece(PieceType.KING, PieceColor.WHITE, Position(7, 4))   # e1
+        self.squares[7][5] = Piece(PieceType.BISHOP, PieceColor.WHITE, Position(7, 5))
+        self.squares[7][6] = Piece(PieceType.KNIGHT, PieceColor.WHITE, Position(7, 6))
+        self.squares[7][7] = Piece(PieceType.ROOK, PieceColor.WHITE, Position(7, 7))
+        # Pawns
+        for col in range(8):
+            self.squares[6][col] = Piece(PieceType.PAWN, PieceColor.WHITE, Position(6, col))
 
         # Setup black pieces
-        self._place_piece(PieceType.ROOK, PieceColor.BLACK, Position(0, 0))
-        self._place_piece(PieceType.KNIGHT, PieceColor.BLACK, Position(0, 1))
-        self._place_piece(PieceType.BISHOP, PieceColor.BLACK, Position(0, 2))
-        self._place_piece(PieceType.QUEEN, PieceColor.BLACK, Position(0, 3))
-        self._place_piece(PieceType.KING, PieceColor.BLACK, Position(0, 4))
-        self._place_piece(PieceType.BISHOP, PieceColor.BLACK, Position(0, 5))
-        self._place_piece(PieceType.KNIGHT, PieceColor.BLACK, Position(0, 6))
-        self._place_piece(PieceType.ROOK, PieceColor.BLACK, Position(0, 7))
-
-        # Setup pawns
+        # Back row
+        self.squares[0][0] = Piece(PieceType.ROOK, PieceColor.BLACK, Position(0, 0))
+        self.squares[0][1] = Piece(PieceType.KNIGHT, PieceColor.BLACK, Position(0, 1))
+        self.squares[0][2] = Piece(PieceType.BISHOP, PieceColor.BLACK, Position(0, 2))
+        self.squares[0][3] = Piece(PieceType.QUEEN, PieceColor.BLACK, Position(0, 3))  # d8
+        self.squares[0][4] = Piece(PieceType.KING, PieceColor.BLACK, Position(0, 4))   # e8
+        self.squares[0][5] = Piece(PieceType.BISHOP, PieceColor.BLACK, Position(0, 5))
+        self.squares[0][6] = Piece(PieceType.KNIGHT, PieceColor.BLACK, Position(0, 6))
+        self.squares[0][7] = Piece(PieceType.ROOK, PieceColor.BLACK, Position(0, 7))
+        # Pawns
         for col in range(8):
-            self._place_piece(PieceType.PAWN, PieceColor.BLACK, Position(1, col))
-            self._place_piece(PieceType.PAWN, PieceColor.WHITE, Position(6, col))
-
-    def _place_piece(self, piece_type: PieceType, color: PieceColor, position: Position):
-        self.squares[position.row][position.col] = Piece(piece_type, color, position)
+            self.squares[1][col] = Piece(PieceType.PAWN, PieceColor.BLACK, Position(1, col))
 
     def get_piece(self, position: Position) -> Optional[Piece]:
         if position.is_valid():
@@ -475,6 +475,10 @@ class Board:
         border_color = Style.BRIGHT + Fore.YELLOW
         coord_color = Style.BRIGHT + Fore.CYAN
         
+        # Define custom backgrounds for squares
+        light_square = "\033[48;5;238m"  # Darker gray for "white" squares
+        dark_square = Back.BLACK
+        
         print("\n")  # Extra spacing at top
         
         # Column coordinates at top
@@ -492,7 +496,8 @@ class Board:
             # First line of square (empty)
             print(f"     {border_color}|{Style.RESET_ALL}", end="")
             for col in range(8):
-                bg_color = Back.WHITE if (row + col) % 2 == 0 else Back.BLACK
+                # In chess, a1 (bottom-left) is dark, so we flip the pattern
+                bg_color = dark_square if (row + col) % 2 == 0 else light_square
                 print(f"{bg_color}     {Style.RESET_ALL}{border_color}|{Style.RESET_ALL}", end="")
             print()
             
@@ -502,7 +507,8 @@ class Board:
             
             for col in range(8):
                 piece = self.squares[row][col]
-                bg_color = Back.WHITE if (row + col) % 2 == 0 else Back.BLACK
+                # In chess, a1 (bottom-left) is dark, so we flip the pattern
+                bg_color = dark_square if (row + col) % 2 == 0 else light_square
                 if piece:
                     # Keep background color consistent across the entire square
                     print(f"{bg_color}  {piece}  {Style.RESET_ALL}{border_color}|{Style.RESET_ALL}", end="")
@@ -513,7 +519,8 @@ class Board:
             # Bottom line of square (empty)
             print(f"     {border_color}|{Style.RESET_ALL}", end="")
             for col in range(8):
-                bg_color = Back.WHITE if (row + col) % 2 == 0 else Back.BLACK
+                # In chess, a1 (bottom-left) is dark, so we flip the pattern
+                bg_color = dark_square if (row + col) % 2 == 0 else light_square
                 print(f"{bg_color}     {Style.RESET_ALL}{border_color}|{Style.RESET_ALL}", end="")
             print()
             
