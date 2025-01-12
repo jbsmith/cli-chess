@@ -66,7 +66,7 @@ python chess_game.py
     
 
 
-## The prompts used to create what you see thus far.
+## The prompts used to create what you see thus far.  commit sha fde0552 2025-01-12 11:53 AM PST
 ---------------------------------
 
 
