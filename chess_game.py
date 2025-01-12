@@ -373,6 +373,8 @@ class Board:
             self.squares[to_pos.row][to_pos.col] = captured_piece
             return False, "Move would leave your king in check"
             
+        # Update piece's internal position
+        piece.position = to_pos
         piece.has_moved = True
         return True, None
 
