@@ -227,15 +227,17 @@ class Board:
             return self.squares[position.row][position.col]
         return None
 
-    def move_piece(self, from_pos: Position, to_pos: Position) -> bool:
-        """Move a piece and return True if the move was valid."""
+    def move_piece(self, from_pos: Position, to_pos: Position) -> Tuple[bool, Optional[str]]:
+        """Move a piece and return (success, error_message)."""
         piece = self.squares[from_pos.row][from_pos.col]
         if not piece:
-            return False
+            return False, "No piece at starting position"
             
-        # Check if move is valid
-        if to_pos not in piece.get_valid_moves(self):
-            return False
+        # Check if move is in piece's valid moves
+        valid_moves = piece.get_valid_moves(self)
+        if to_pos not in valid_moves:
+            piece_type = piece.piece_type.value
+            return False, f"Invalid move for {piece_type} - not in its movement pattern"
             
         # Try the move
         captured_piece = self.squares[to_pos.row][to_pos.col]
@@ -247,10 +249,10 @@ class Board:
             # Undo the move
             self.squares[from_pos.row][from_pos.col] = piece
             self.squares[to_pos.row][to_pos.col] = captured_piece
-            return False
+            return False, "Move would leave your king in check"
             
         piece.has_moved = True
-        return True
+        return True, None
 
     def is_king_in_check(self, color: PieceColor) -> bool:
         """Check if the king of given color is in check."""
@@ -579,13 +581,9 @@ class ChessGame:
                 
             try:
                 from_pos, to_pos = self._parse_move(move)
-                if self._make_move(from_pos, to_pos):
-                    self.current_player = (
-                        PieceColor.BLACK if self.current_player == PieceColor.WHITE 
-                        else PieceColor.WHITE
-                    )
-                else:
-                    print("Invalid move! Try again.")
+                success, error_msg = self._make_move(from_pos, to_pos)
+                if not success:
+                    print(f"Invalid move: {error_msg}")
                     input("\nPress Enter to continue...")
             except ValueError as e:
                 print(f"Error: {e}")
@@ -603,23 +601,21 @@ class ChessGame:
         except (IndexError, ValueError):
             raise ValueError("Invalid position notation.")
 
-    def _make_move(self, from_pos: Position, to_pos: Position) -> bool:
+    def _make_move(self, from_pos: Position, to_pos: Position) -> Tuple[bool, Optional[str]]:
         piece = self.board.get_piece(from_pos)
         if not piece:
-            print("No piece at starting position!")
-            return False
+            return False, "No piece at starting position"
             
         if piece.color != self.current_player:
-            print("That's not your piece!")
-            return False
+            return False, f"That's not your piece (it's {piece.color.value}'s)"
             
         # Check if move is valid and doesn't leave/put king in check
-        if not self.board.move_piece(from_pos, to_pos):
+        success, error_msg = self.board.move_piece(from_pos, to_pos)
+        if not success:
             if self.board.is_king_in_check(self.current_player):
-                print("Invalid move! Your king is in check.")
+                return False, f"{error_msg} (Your king is in check)"
             else:
-                print("Invalid move!")
-            return False
+                return False, error_msg
             
         # Check if move puts opponent in check/checkmate
         opponent_color = (PieceColor.BLACK if self.current_player == PieceColor.WHITE 
@@ -636,7 +632,11 @@ class ChessGame:
             print("\nStalemate! Game is a draw.")
             self.game_over = True
             
-        return True
+        self.current_player = (
+            PieceColor.BLACK if self.current_player == PieceColor.WHITE 
+            else PieceColor.WHITE
+        )
+        return True, None
 
     def _show_help(self):
         print("\nGame Controls:")
