@@ -228,19 +228,115 @@ class Board:
         return None
 
     def move_piece(self, from_pos: Position, to_pos: Position) -> bool:
-        piece = self.get_piece(from_pos)
+        """Move a piece and return True if the move was valid."""
+        piece = self.squares[from_pos.row][from_pos.col]
         if not piece:
             return False
-
+            
+        # Check if move is valid
         if to_pos not in piece.get_valid_moves(self):
             return False
-
-        # Move the piece
+            
+        # Try the move
+        captured_piece = self.squares[to_pos.row][to_pos.col]
         self.squares[to_pos.row][to_pos.col] = piece
         self.squares[from_pos.row][from_pos.col] = None
-        piece.position = to_pos
+        
+        # Check if move puts own king in check
+        if self.is_king_in_check(piece.color):
+            # Undo the move
+            self.squares[from_pos.row][from_pos.col] = piece
+            self.squares[to_pos.row][to_pos.col] = captured_piece
+            return False
+            
         piece.has_moved = True
         return True
+
+    def is_king_in_check(self, color: PieceColor) -> bool:
+        """Check if the king of given color is in check."""
+        # Find king position
+        king_pos = None
+        for row in range(8):
+            for col in range(8):
+                piece = self.squares[row][col]
+                if (piece and piece.piece_type == PieceType.KING 
+                    and piece.color == color):
+                    king_pos = Position(row, col)
+                    break
+            if king_pos:
+                break
+        
+        if not king_pos:
+            return False  # Should never happen in a valid game
+        
+        # Check if any opponent piece can capture the king
+        opponent_color = (PieceColor.BLACK if color == PieceColor.WHITE 
+                         else PieceColor.WHITE)
+        for row in range(8):
+            for col in range(8):
+                piece = self.squares[row][col]
+                if piece and piece.color == opponent_color:
+                    if king_pos in piece.get_valid_moves(self):
+                        return True
+        return False
+
+    def is_checkmate(self, color: PieceColor) -> bool:
+        """Check if the given color is in checkmate."""
+        if not self.is_king_in_check(color):
+            return False
+            
+        # Try all possible moves for all pieces
+        for row in range(8):
+            for col in range(8):
+                piece = self.squares[row][col]
+                if piece and piece.color == color:
+                    from_pos = Position(row, col)
+                    for to_pos in piece.get_valid_moves(self):
+                        # Try the move
+                        captured_piece = self.squares[to_pos.row][to_pos.col]
+                        self.squares[to_pos.row][to_pos.col] = piece
+                        self.squares[from_pos.row][from_pos.col] = None
+                        
+                        # Check if still in check
+                        still_in_check = self.is_king_in_check(color)
+                        
+                        # Undo the move
+                        self.squares[from_pos.row][from_pos.col] = piece
+                        self.squares[to_pos.row][to_pos.col] = captured_piece
+                        
+                        if not still_in_check:
+                            return False  # Found a legal move
+        
+        return True  # No legal moves found
+
+    def is_stalemate(self, color: PieceColor) -> bool:
+        """Check if the given color is in stalemate."""
+        if self.is_king_in_check(color):
+            return False
+            
+        # Check if any piece has valid moves
+        for row in range(8):
+            for col in range(8):
+                piece = self.squares[row][col]
+                if piece and piece.color == color:
+                    from_pos = Position(row, col)
+                    for to_pos in piece.get_valid_moves(self):
+                        # Try the move
+                        captured_piece = self.squares[to_pos.row][to_pos.col]
+                        self.squares[to_pos.row][to_pos.col] = piece
+                        self.squares[from_pos.row][from_pos.col] = None
+                        
+                        # Check if move puts king in check
+                        in_check = self.is_king_in_check(color)
+                        
+                        # Undo the move
+                        self.squares[from_pos.row][from_pos.col] = piece
+                        self.squares[to_pos.row][to_pos.col] = captured_piece
+                        
+                        if not in_check:
+                            return False  # Found a legal move
+        
+        return True  # No legal moves found
 
     def display(self):
         # Clear screen before drawing
@@ -517,7 +613,30 @@ class ChessGame:
             print("That's not your piece!")
             return False
             
-        return self.board.move_piece(from_pos, to_pos)
+        # Check if move is valid and doesn't leave/put king in check
+        if not self.board.move_piece(from_pos, to_pos):
+            if self.board.is_king_in_check(self.current_player):
+                print("Invalid move! Your king is in check.")
+            else:
+                print("Invalid move!")
+            return False
+            
+        # Check if move puts opponent in check/checkmate
+        opponent_color = (PieceColor.BLACK if self.current_player == PieceColor.WHITE 
+                         else PieceColor.WHITE)
+        
+        if self.board.is_checkmate(opponent_color):
+            self.board.display()
+            print(f"\nCheckmate! {self.current_player.value} wins!")
+            self.game_over = True
+        elif self.board.is_king_in_check(opponent_color):
+            print(f"\n{opponent_color.value} is in check!")
+        elif self.board.is_stalemate(opponent_color):
+            self.board.display()
+            print("\nStalemate! Game is a draw.")
+            self.game_over = True
+            
+        return True
 
     def _show_help(self):
         print("\nGame Controls:")
