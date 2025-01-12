@@ -463,7 +463,6 @@ class ChessGame:
                 from_pos, to_pos = self.system_player.get_move(self.board)
                 self.board.move_piece(from_pos, to_pos)
                 print(f"System moved: {from_pos.to_algebraic()} {to_pos.to_algebraic()}")
-                input("\nPress Enter to continue...")
                 self.current_player = (
                     PieceColor.BLACK if self.current_player == PieceColor.WHITE 
                     else PieceColor.WHITE
