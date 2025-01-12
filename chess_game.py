@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import sys
+import os
 from enum import Enum
 from dataclasses import dataclass
 from typing import List, Tuple, Optional
@@ -8,6 +9,15 @@ from colorama import init, Fore, Back, Style
 
 # Initialize colorama for cross-platform colored output
 init()
+
+def clear_screen():
+    """Clear the terminal screen and move cursor to top-left."""
+    # Use ANSI escape codes to clear screen and move cursor
+    print("\033[2J\033[H", end="")
+
+def move_cursor_to_top():
+    """Move cursor to top-left of terminal."""
+    print("\033[H", end="")
 
 class PieceColor(Enum):
     WHITE = "white"
@@ -219,6 +229,9 @@ class Board:
         return True
 
     def display(self):
+        # Clear screen before drawing
+        clear_screen()
+        
         print("\n   a b c d e f g h")
         print("   ---------------")
         for row in range(8):
@@ -241,8 +254,11 @@ class ChessGame:
         self.game_over = False
 
     def play(self):
+        clear_screen()
         print("Welcome to CLI Chess!")
         print("Enter moves in the format: 'e2 e4' or type 'quit' to exit")
+        print("\nPress Enter to start...")
+        input()
         
         while not self.game_over:
             self.board.display()
@@ -251,9 +267,12 @@ class ChessGame:
             move = input("Enter your move: ").strip().lower()
             
             if move == 'quit':
+                clear_screen()
+                print("Thanks for playing!")
                 break
             elif move == 'help':
                 self._show_help()
+                input("\nPress Enter to continue...")
                 continue
                 
             try:
@@ -265,9 +284,11 @@ class ChessGame:
                     )
                 else:
                     print("Invalid move! Try again.")
+                    input("\nPress Enter to continue...")
             except ValueError as e:
                 print(f"Error: {e}")
-
+                input("\nPress Enter to continue...")
+                
     def _parse_move(self, move: str) -> Tuple[Position, Position]:
         parts = move.split()
         if len(parts) != 2:
