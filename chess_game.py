@@ -75,19 +75,128 @@ class Piece:
 
     def get_valid_moves(self, board: 'Board') -> List[Position]:
         moves = []
+        row, col = self.position.row, self.position.col
+        
         if self.piece_type == PieceType.PAWN:
-            moves.extend(self._get_pawn_moves(board))
-        elif self.piece_type == PieceType.ROOK:
-            moves.extend(self._get_rook_moves(board))
+            # Direction depends on color
+            direction = 1 if self.color == PieceColor.BLACK else -1
+            
+            # Forward move
+            forward = Position(row + direction, col)
+            if (0 <= forward.row < 8 and 
+                not board.squares[forward.row][forward.col]):  # Empty square
+                moves.append(forward)
+                
+                # Initial two-square move
+                if not self.has_moved:
+                    double_forward = Position(row + 2 * direction, col)
+                    if (0 <= double_forward.row < 8 and 
+                        not board.squares[double_forward.row][double_forward.col]):
+                        moves.append(double_forward)
+            
+            # Diagonal captures
+            for capture_col in [col - 1, col + 1]:
+                if 0 <= capture_col < 8:
+                    capture_pos = Position(row + direction, capture_col)
+                    if 0 <= capture_pos.row < 8:
+                        # Normal capture
+                        target = board.squares[capture_pos.row][capture_pos.col]
+                        if target and target.color != self.color:
+                            moves.append(capture_pos)
+                        
+                        # En passant capture
+                        if board.last_pawn_move:
+                            last_from, last_to = board.last_pawn_move
+                            if (last_to.col == capture_col and  # Adjacent column
+                                last_to.row == row and  # Same row
+                                abs(last_from.row - last_to.row) == 2 and  # Double move
+                                board.squares[last_to.row][last_to.col].color != self.color):  # Opponent's pawn
+                                moves.append(capture_pos)
+            
+            # TODO: Add en passant captures later
+            
         elif self.piece_type == PieceType.KNIGHT:
-            moves.extend(self._get_knight_moves(board))
+            # Knight moves in L-shape
+            knight_moves = [
+                (-2, -1), (-2, 1), (-1, -2), (-1, 2),
+                (1, -2), (1, 2), (2, -1), (2, 1)
+            ]
+            for dr, dc in knight_moves:
+                new_row, new_col = row + dr, col + dc
+                if 0 <= new_row < 8 and 0 <= new_col < 8:
+                    target_piece = board.squares[new_row][new_col]
+                    if not target_piece or target_piece.color != self.color:
+                        moves.append(Position(new_row, new_col))
+                        
         elif self.piece_type == PieceType.BISHOP:
-            moves.extend(self._get_bishop_moves(board))
+            # Bishop moves diagonally
+            directions = [(-1, -1), (-1, 1), (1, -1), (1, 1)]
+            for dr, dc in directions:
+                new_row, new_col = row + dr, col + dc
+                while 0 <= new_row < 8 and 0 <= new_col < 8:
+                    target_piece = board.squares[new_row][new_col]
+                    if not target_piece:
+                        moves.append(Position(new_row, new_col))
+                    elif target_piece.color != self.color:
+                        moves.append(Position(new_row, new_col))
+                        break
+                    else:
+                        break
+                    new_row, new_col = new_row + dr, new_col + dc
+                    
+        elif self.piece_type == PieceType.ROOK:
+            # Rook moves horizontally and vertically
+            directions = [(-1, 0), (1, 0), (0, -1), (0, 1)]
+            for dr, dc in directions:
+                new_row, new_col = row + dr, col + dc
+                while 0 <= new_row < 8 and 0 <= new_col < 8:
+                    target_piece = board.squares[new_row][new_col]
+                    if not target_piece:
+                        moves.append(Position(new_row, new_col))
+                    elif target_piece.color != self.color:
+                        moves.append(Position(new_row, new_col))
+                        break
+                    else:
+                        break
+                    new_row, new_col = new_row + dr, new_col + dc
+                    
         elif self.piece_type == PieceType.QUEEN:
-            moves.extend(self._get_queen_moves(board))
+            # Queen moves like both bishop and rook
+            directions = [
+                (-1, -1), (-1, 0), (-1, 1),
+                (0, -1),           (0, 1),
+                (1, -1),  (1, 0),  (1, 1)
+            ]
+            for dr, dc in directions:
+                new_row, new_col = row + dr, col + dc
+                while 0 <= new_row < 8 and 0 <= new_col < 8:
+                    target_piece = board.squares[new_row][new_col]
+                    if not target_piece:
+                        moves.append(Position(new_row, new_col))
+                    elif target_piece.color != self.color:
+                        moves.append(Position(new_row, new_col))
+                        break
+                    else:
+                        break
+                    new_row, new_col = new_row + dr, new_col + dc
+                    
         elif self.piece_type == PieceType.KING:
-            moves.extend(self._get_king_moves(board))
-        return [move for move in moves if move.is_valid()]
+            # King moves one square in any direction
+            directions = [
+                (-1, -1), (-1, 0), (-1, 1),
+                (0, -1),           (0, 1),
+                (1, -1),  (1, 0),  (1, 1)
+            ]
+            for dr, dc in directions:
+                new_row, new_col = row + dr, col + dc
+                if 0 <= new_row < 8 and 0 <= new_col < 8:
+                    target_piece = board.squares[new_row][new_col]
+                    if not target_piece or target_piece.color != self.color:
+                        moves.append(Position(new_row, new_col))
+            
+            # TODO: Add castling moves later
+        
+        return moves
 
     def _get_pawn_moves(self, board: 'Board') -> List[Position]:
         moves = []
@@ -192,6 +301,7 @@ class Board:
     def __init__(self):
         self.squares = [[None for _ in range(8)] for _ in range(8)]
         self._setup_board()
+        self.last_pawn_move = None  # Tuple of (from_pos, to_pos) for en passant
 
     def _setup_board(self):
         # Setup white pieces
@@ -238,6 +348,18 @@ class Board:
         if to_pos not in valid_moves:
             piece_type = piece.piece_type.value
             return False, f"Invalid move for {piece_type} - not in its movement pattern"
+            
+        # Track last pawn move for en passant
+        if piece.piece_type == PieceType.PAWN:
+            self.last_pawn_move = (from_pos, to_pos)
+            
+            # Handle en passant capture
+            if abs(from_pos.col - to_pos.col) == 1 and not self.squares[to_pos.row][to_pos.col]:
+                # Remove captured pawn
+                capture_row = from_pos.row
+                self.squares[capture_row][to_pos.col] = None
+        else:
+            self.last_pawn_move = None
             
         # Try the move
         captured_piece = self.squares[to_pos.row][to_pos.col]
